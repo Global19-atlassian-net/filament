@@ -22,9 +22,12 @@
 namespace filament {
 namespace backend {
 
+class VulkanBuffer;
+
 class VulkanBlitter {
 public:
-    VulkanBlitter(VulkanContext& context) : mContext(context) {}
+    VulkanBlitter(VulkanContext& context, VulkanStagePool& stagePool, VulkanDisposer& disposer) :
+            mContext(context), mStagePool(stagePool), mDisposer(disposer) {}
 
     struct BlitArgs {
         const VulkanRenderTarget* dstTarget;
@@ -44,12 +47,19 @@ private:
     void lazyInit() noexcept;
 
     void blitFast(VkImageAspectFlags aspect, VkFilter filter, const VulkanRenderTarget* srcTarget,
-        VulkanAttachment src, VulkanAttachment dst, const VkOffset3D srcRect[2],
-        const VkOffset3D dstRect[2], VkCommandBuffer cmdBuffer);
+            VulkanAttachment src, VulkanAttachment dst, const VkOffset3D srcRect[2],
+            const VkOffset3D dstRect[2], VkCommandBuffer cmdBuffer);
 
-    VkShaderModule mVertex = VK_NULL_HANDLE;
-    VkShaderModule mFragment = VK_NULL_HANDLE;
+    void blitSlowDepth(VkImageAspectFlags aspect, VkFilter filter,
+            const VulkanRenderTarget* srcTarget, VulkanAttachment src, VulkanAttachment dst,
+            const VkOffset3D srcRect[2], const VkOffset3D dstRect[2], VkCommandBuffer cmdBuffer);
+
+    VkShaderModule mVertexShader = VK_NULL_HANDLE;
+    VkShaderModule mFragmentShader = VK_NULL_HANDLE;
+    VulkanBuffer* mTriangleVertices = nullptr;
     VulkanContext& mContext;
+    VulkanStagePool& mStagePool;
+    VulkanDisposer& mDisposer;
 };
 
 } // namespace filament

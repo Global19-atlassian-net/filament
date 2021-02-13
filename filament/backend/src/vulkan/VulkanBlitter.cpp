@@ -30,7 +30,6 @@ namespace filament {
 namespace backend {
 
 void VulkanBlitter::blitColor(VkCommandBuffer cmdBuffer, BlitArgs args) {
-    lazyInit();
     const VulkanAttachment src = args.srcTarget->getColor(args.targetIndex);
     const VulkanAttachment dst = args.dstTarget->getColor(0);
     const VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -55,7 +54,6 @@ void VulkanBlitter::blitColor(VkCommandBuffer cmdBuffer, BlitArgs args) {
 }
 
 void VulkanBlitter::blitDepth(VkCommandBuffer cmdBuffer, BlitArgs args) {
-    lazyInit();
     const VulkanAttachment src = args.srcTarget->getDepth();
     const VulkanAttachment dst = args.dstTarget->getDepth();
     const VkImageAspectFlags aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
@@ -74,6 +72,12 @@ void VulkanBlitter::blitDepth(VkCommandBuffer cmdBuffer, BlitArgs args) {
         return;
     }
 #endif
+
+    if (src.texture && src.texture->samples > 1 && dst.texture && dst.texture->samples == 1) {
+        blitSlowDepth(aspect, args.filter, args.srcTarget, src, dst, args.srcRectPair,
+            args.dstRectPair, cmdBuffer);
+        return;
+    }
 
     blitFast(aspect, args.filter, args.srcTarget, src, dst, args.srcRectPair, args.dstRectPair,
             cmdBuffer);
@@ -133,15 +137,23 @@ void VulkanBlitter::blitFast(VkImageAspectFlags aspect, VkFilter filter,
 
 void VulkanBlitter::shutdown() noexcept {
     if (mContext.device) {
-        vkDestroyShaderModule(mContext.device, mVertex, VKALLOC);
-        vkDestroyShaderModule(mContext.device, mFragment, VKALLOC);
+        vkDestroyShaderModule(mContext.device, mVertexShader, VKALLOC);
+        mVertexShader = nullptr;
+
+        vkDestroyShaderModule(mContext.device, mFragmentShader, VKALLOC);
+        mFragmentShader = nullptr;
+
+        delete mTriangleVertices;
+        mTriangleVertices = nullptr;
+
+        mDisposer.removeReference(this);
     }
 }
 
 // If we created these shader modules in the constructor, the device might not be ready yet.
 // It is easier to do lazy initialization, which can also improve load time.
 void VulkanBlitter::lazyInit() noexcept {
-    if (mVertex) {
+    if (mVertexShader) {
         return;
     }
     assert(mContext.device);
@@ -150,15 +162,34 @@ void VulkanBlitter::lazyInit() noexcept {
     moduleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     VkResult result;
 
-    moduleInfo.codeSize = VKSHADERS_BLITCOLORVS_SIZE;
-    moduleInfo.pCode = (uint32_t*) VKSHADERS_BLITCOLORVS_DATA;
-    result = vkCreateShaderModule(mContext.device, &moduleInfo, VKALLOC, &mVertex);
+    moduleInfo.codeSize = VKSHADERS_BLITDEPTHVS_SIZE;
+    moduleInfo.pCode = (uint32_t*) VKSHADERS_BLITDEPTHVS_DATA;
+    result = vkCreateShaderModule(mContext.device, &moduleInfo, VKALLOC, &mVertexShader);
     ASSERT_POSTCONDITION(result == VK_SUCCESS, "Unable to create vertex shader for blit.");
 
-    moduleInfo.codeSize = VKSHADERS_BLITCOLORFS_SIZE;
-    moduleInfo.pCode = (uint32_t*) VKSHADERS_BLITCOLORFS_DATA;
-    result = vkCreateShaderModule(mContext.device, &moduleInfo, VKALLOC, &mFragment);
+    moduleInfo.codeSize = VKSHADERS_BLITDEPTHFS_SIZE;
+    moduleInfo.pCode = (uint32_t*) VKSHADERS_BLITDEPTHFS_DATA;
+    result = vkCreateShaderModule(mContext.device, &moduleInfo, VKALLOC, &mFragmentShader);
     ASSERT_POSTCONDITION(result == VK_SUCCESS, "Unable to create fragment shader for blit.");
+
+    static const float kTriangleVertices[] = {
+        -1.0f, -1.0f,
+        +1.0f, -1.0f,
+        -1.0f, +1.0f,
+        +1.0f, +1.0f,
+    };
+
+    mTriangleVertices = new VulkanBuffer(mContext, mStagePool, mDisposer, this,
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, sizeof(kTriangleVertices));
+
+    mTriangleVertices->loadFromCpu(kTriangleVertices, 0, sizeof(kTriangleVertices));
+}
+
+void VulkanBlitter::blitSlowDepth(VkImageAspectFlags aspect, VkFilter filter,
+        const VulkanRenderTarget* srcTarget, VulkanAttachment src, VulkanAttachment dst,
+        const VkOffset3D srcRect[2], const VkOffset3D dstRect[2], VkCommandBuffer cmdBuffer) {
+    lazyInit();
+    // TODO
 }
 
 } // namespace filament

@@ -97,8 +97,8 @@ VulkanDriver::VulkanDriver(VulkanPlatform* platform,
         const char* const* ppEnabledExtensions, uint32_t enabledExtensionCount) noexcept :
         DriverBase(new ConcreteDispatcher<VulkanDriver>()),
         mContextManager(*platform),
-        mBlitter(mContext),
         mStagePool(mContext, mDisposer),
+        mBlitter(mContext, mStagePool, mDisposer),
         mFramebufferCache(mContext),
         mSamplerCache(mContext) {
     mContext.rasterState = mBinder.getDefaultRasterState();

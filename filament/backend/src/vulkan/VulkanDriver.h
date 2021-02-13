@@ -150,9 +150,9 @@ private:
 
     VulkanContext mContext = {};
     VulkanBinder mBinder;
-    VulkanBlitter mBlitter;
     VulkanDisposer mDisposer;
     VulkanStagePool mStagePool;
+    VulkanBlitter mBlitter;
     VulkanFboCache mFramebufferCache;
     VulkanSamplerCache mSamplerCache;
     VulkanRenderTarget* mCurrentRenderTarget = nullptr;
